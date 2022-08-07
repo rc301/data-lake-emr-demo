@@ -1,1 +1,0 @@
-# data-lake-emr-demo
