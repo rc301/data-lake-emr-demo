@@ -4,7 +4,9 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import udf, col
 from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, date_format
+from pyspark.sql.functions import *
 from pyspark.sql.types import *
+from pyspark.sql.window import Window
 
 config = configparser.ConfigParser()
 config.read('dl.cfg')
@@ -56,7 +58,8 @@ def process_song_data(spark, input_data, output_data):
     artists_table = artists_table.withColumnRenamed('artist_name', 'name') \
                                 .withColumnRenamed('artist_location', 'location') \
                                 .withColumnRenamed('artist_latitude','latitude') \
-                                .withColumnRenamed('artist_longitude','longitude')
+                                .withColumnRenamed('artist_longitude','longitude') \
+                                .withColumnRenamed('sessionId','session_id') 
     
     # write artists table to parquet files
     artists_table.write \
@@ -67,42 +70,119 @@ def process_song_data(spark, input_data, output_data):
 
 def process_log_data(spark, input_data, output_data):
     # get filepath to log data file
-    log_data =
+    log_data = f"{input_data}log_data/"
 
     # read log data file
-    df = 
+    log_schema = StructType( \
+                    [StructField('artist', StringType(), True), \
+                         StructField('auth', StringType(), True), \
+                         StructField('firstName', StringType(), True), \
+                         StructField('gender', StringType(), True), \
+                         StructField('itemInSession', LongType(), True), \
+                         StructField('lastName', StringType(), True), \
+                         StructField('length', DoubleType(), True), \
+                         StructField('level', StringType(), True), \
+                         StructField('location', StringType(), True), \
+                         StructField('method', StringType(), True), \
+                         StructField('page', StringType(), True), \
+                         StructField('registration', DoubleType(), True), \
+                         StructField('sessionId', LongType(), True), \
+                         StructField('song', StringType(), True), \
+                         StructField('status', LongType(), True), \
+                         StructField('ts', LongType(), True), \
+                         StructField('userAgent', StringType(), True), \
+                         StructField('userId', StringType(), True) \
+                    ])
+    df = spark.read.schema(log_schema)\
+                .json(log_data) \
+                .withColumnRenamed('userId', 'user_id') \
+                .withColumnRenamed('firstName', 'first_name') \
+                .withColumnRenamed('lastName','last_name') \
+                .withColumnRenamed('sessionId','session_id') \
+                .withColumnRenamed('userAgent','user_agent') 
     
     # filter by actions for song plays
-    df = 
+    df = df.filter("page=='NextSong'") 
 
     # extract columns for users table    
-    artists_table = 
+    cols_users_table = ['userId', 'firstName', 'lastName', 'gender', 'level']
+    users_table = df.select(cols_users_table).dropDuplicates(cols_users_table)
     
     # write users table to parquet files
-    artists_table
+    users_table.write \
+        .option("header", True) \
+        .mode("Overwrite") \
+        .parquet(f"{output_data}users_table/")
 
     # create timestamp column from original timestamp column
-    get_timestamp = udf()
-    df = 
+    get_timestamp = udf(lambda x : datetime.fromtimestamp(x / 1000), TimestampType())
+    df = df.withColumn('start_time', get_timestamp('ts'))
     
     # create datetime column from original timestamp column
-    get_datetime = udf()
-    df = 
+    dt_type = StructType( \
+            [StructField('hour', IntegerType(), True), \
+                 StructField('day', IntegerType(), True), \
+                 StructField('week', IntegerType(), True), \
+                 StructField('month', IntegerType(), True), \
+                 StructField('year', IntegerType(), True), \
+                 StructField('weekday', IntegerType(), True) \
+            ])
+    def get_datetime_parts(ts):
+        dt = datetime.fromtimestamp(ts / 1000)
+        hour = dt.hour
+        day = dt.day
+        week = int(dt.strftime("%W"))
+        month = dt.month
+        year = dt.year
+        weekday = dt.date().weekday()
+        return hour, day, week, month, year, weekday
+    get_datetime = udf(get_datetime_parts, dt_type)
+    df = df.withColumn('dt', get_datetime('ts'))
     
     # extract columns to create time table
-    time_table = 
+    time_table_cols = ['start_time', 'dt.hour', 'dt.day', 'dt.week', 'dt.month', 'dt.year', 'dt.weekday']
+    time_table = df.select(time_table_cols).distinct()
     
     # write time table to parquet files partitioned by year and month
-    time_table
+    time_table.write \
+        .option("header", True) \
+        .partitionBy("year", "month") \
+        .mode("Overwrite") \
+        .parquet(f"{output_data}time_table/")
 
     # read in song data to use for songplays table
-    song_df = 
+    song_data = f"{input_data}song_data/*/*/*"
+    song_schema = StructType([StructField('artist_id', StringType(), True), \
+                                StructField('artist_latitude', DoubleType(), True), \
+                                StructField('artist_location', StringType(), True), \
+                                StructField('artist_longitude', DoubleType(), True), \
+                                StructField('artist_name', StringType(), True), \
+                                StructField('duration', DoubleType(), True), \
+                                StructField('num_songs', LongType(), True), \
+                                StructField('song_id', StringType(), True), \
+                                StructField('title', StringType(), True), \
+                                StructField('year', IntegerType(), True) \
+                            ])
+    song_cols = ['artist_id', 'artist_name', 'song_id', 'title']
+    song_df = spark.read.schema(song_schema).json(song_data).select(song_cols).distinct()
 
     # extract columns from joined song and log datasets to create songplays table 
-    songplays_table = 
+    log_cols = ['start_time', 'user_id', 'artist', 'song', 'level', 'session_id', 'location', 'user_agent', 'dt.year', 'dt.month']
+    join_condition = ((df.artist==song_df.artist_name) & (df.song==song_df.title))
+    songplays_table = df.select(log_cols) \
+        .join(song_df, on=join_condition, how='left')
+    
+    # inserting auto incremental column 'songplay_id'    
+    window = Window.orderBy('start_time')
+    songplays_table = songplays_table.withColumn('songplay_id', row_number().over(window))
 
     # write songplays table to parquet files partitioned by year and month
-    songplays_table
+    songplays_cols_final = ['songplay_id', 'start_time', 'user_id', 'level', 'song_id', 'artist_id', 'session_id', 'location', 'user_agent', 'year', 'month']
+    songplays_table.select(songplays_cols_final).write \
+            .option("header", True) \
+            .partitionBy("year", "month") \
+            .mode("Overwrite") \
+            .parquet(f"{output_data}songplays_table/")
 
 
 def main():
