@@ -1,5 +1,6 @@
 env/
 infra/
 trash/
+data/
 dl.cfg
 project_notebook.ipynb
