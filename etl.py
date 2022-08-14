@@ -1,10 +1,17 @@
 from datetime import datetime
+from pydoc import doc
+from xml.dom.xmlbuilder import _DOMInputSourceStringDataType
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
 
 def create_spark_session():
+    """Create a spark session for etl process
+
+    Returns:
+        SparkSession: a spark session for enabling the usage of spark resources
+    """
     spark = SparkSession \
         .builder \
         .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0") \
@@ -13,6 +20,14 @@ def create_spark_session():
 
 
 def process_song_data(spark, input_data, output_data):
+    """Process for extracting song data, transforming it and writing into output tables
+
+    Args:
+        spark (SparkSession): a spark session for enabling the usage of spark resources
+        input_data (string): input data s3 URI path
+        output_data (string): output data s3 URI path where all processed data will be stored into
+    """
+    
     # get filepath to song data file
     song_data = "{}song_data/*/*/*".format(input_data)
     
@@ -58,6 +73,16 @@ def process_song_data(spark, input_data, output_data):
 
 
 def process_log_data(spark, input_data, output_data):
+    """Process for extracting log data, transforming it and writing into output tables
+
+    Args:
+        spark (SparkSession): a spark session for enabling the usage of spark resources
+        input_data (string): input data s3 URI path
+        output_data (string): output data s3 URI path where all processed data will be stored into
+
+    Returns:
+        _type_: _description_
+    """
     # get filepath to log data file
     log_data = "{}log_data/*/*/*".format(input_data)
 
@@ -176,9 +201,11 @@ def process_log_data(spark, input_data, output_data):
 
 
 def main():
+    """Main ETL process
+    """
     spark = create_spark_session()
     input_data = "s3a://udacity-dend/"
-    output_data = "s3://udacity-bkt-rc301-spark-project/output_data/"
+    output_data = ""
     
     process_song_data(spark, input_data, output_data)    
     process_log_data(spark, input_data, output_data)
