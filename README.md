@@ -45,6 +45,7 @@ This ETL job is meant to extract song data from two S3 buckets owned by Udacity,
 | userAgent | string |
 | userId | string |
 <br>
+
 ### Output <br>
 **song table**
 | field  | type |
