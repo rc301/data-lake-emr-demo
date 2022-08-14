@@ -1,2 +1,5 @@
 env/
-infra/env_infra
+infra/
+trash/
+dl.cfg
+project_notebook.ipynb
