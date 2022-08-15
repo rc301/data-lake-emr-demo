@@ -4,6 +4,14 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
+import configparser
+import os
+
+config = configparser.ConfigParser()
+config.read_file(open('dl.cfg'))
+
+os.environ['AWS_ACCESS_KEY_ID']=config.get('AWS','AWS_ACCESS_KEY_ID')
+os.environ['AWS_SECRET_ACCESS_KEY']=config.get('AWS','AWS_SECRET_ACCESS_KEY')
 
 def create_spark_session():
     """Create a spark session for etl process
